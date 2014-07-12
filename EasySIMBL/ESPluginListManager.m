@@ -9,9 +9,6 @@
 #import "ESPluginListManager.h"
 #import "ESPluginListCellView.h"
 
-static char ESPluginListManagerAlertAssociatedObjectKey;
-
-
 @implementation ESPluginListManager
 @synthesize plugins = _plugins;
 @synthesize removePopover = _removePopover;
@@ -24,7 +21,6 @@ static char ESPluginListManagerAlertAssociatedObjectKey;
 {
     self = [super init];
     if (self) {
-        _eventStream=nil;
         NSString *applicationSupportPath = [SIMBL applicationSupportPath];
         self.pluginsDirectory = [applicationSupportPath stringByAppendingPathComponent:EasySIMBLPluginsPathComponent];
         self.disabledPluginsDirectory = [applicationSupportPath stringByAppendingPathComponent:[EasySIMBLPluginsPathComponent stringByAppendingString:@" (Disabled)"]];
@@ -259,8 +255,8 @@ static char ESPluginListManagerAlertAssociatedObjectKey;
 // install. copy to plugin dir
 - (void)installPlugins:(NSArray *)plugins
 {
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    NSInteger waitCount = 0;
+	dispatch_group_t group = dispatch_group_create();
+	
     for (NSString *path in plugins) {
         //check from plugin folder
         if ([path hasPrefix:self.pluginsDirectory]) {
@@ -288,28 +284,25 @@ static char ESPluginListManagerAlertAssociatedObjectKey;
 						[[NSWorkspace sharedWorkspace]recycleURLs:URLs
 												completionHandler:^(NSDictionary *newURLs, NSError *error){
 													[self installPlugin:path toPath:installPath];
-													dispatch_semaphore_signal(semaphore);
+													dispatch_group_leave(group);
 												}];
 					});
 
 				} else {
-					dispatch_semaphore_signal(semaphore);
+					dispatch_group_leave(group);
 				}
 			}];
 			
-            waitCount++;
+			dispatch_group_enter(group);
         }else {
             installPath=[self.pluginsDirectory stringByAppendingPathComponent:[path lastPathComponent]];
             [self installPlugin:path toPath:installPath];
         }
     }
 	
-    dispatch_async(dispatch_get_current_queue(), ^{
-        for (NSInteger i=0; i<waitCount; i++) {
-            dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-        }
-        [self scanPlugins];
-    });
+	dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+		[self scanPlugins];
+	});
 }
 
 - (void)installPlugin:(NSString*)path toPath:(NSString*)installPath
