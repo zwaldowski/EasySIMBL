@@ -270,54 +270,46 @@ static char ESPluginListManagerAlertAssociatedObjectKey;
         //check already installed
         NSString* installPath=[self installedPathForFileName:[path lastPathComponent]];
         if (installPath) {
-            //already installed
-            //
-            NSString* alertText=@"\"%@\" is already exists. Do you want to replace?";
-            NSString* const informativeText=@"If replace, existing file is moved to trash.";
-            alertText=[NSString stringWithFormat:alertText, [path lastPathComponent]];
-            NSAlert *alert=[NSAlert alertWithMessageText:alertText defaultButton:@"Replace" alternateButton:@"Cancel" otherButton:nil informativeTextWithFormat:informativeText];
-            
-            NSDictionary* pathInfo=[NSDictionary dictionaryWithObjectsAndKeys:path, @"from", installPath, @"to", nil];
-            objc_setAssociatedObject(alert, &ESPluginListManagerAlertAssociatedObjectKey, pathInfo, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            
-            [alert beginSheetModalForWindow:self.listView.window modalDelegate:self
-                             didEndSelector:@selector(installAlertDidEnd:returnCode:contextInfo:) contextInfo:semaphore];
-            [NSApp runModalForWindow:self.listView.window];
+            // already installed
+			NSAlert *alert = [[NSAlert alloc] init];
+			
+			alert.messageText = [NSString localizedStringWithFormat:@"\"%@\" is already exists. Do you want to replace it?", path.lastPathComponent];
+			alert.informativeText = NSLocalizedString(@"If replaced, the existing file is moved to trash.", nil);
+			[alert addButtonWithTitle:NSLocalizedString(@"Replace", nil)];
+			[alert addButtonWithTitle:NSLocalizedString(@"Cancel", nil)];
+			
+			[alert beginSheetModalForWindow:self.listView.window completionHandler:^(NSModalResponse returnCode) {
+				[NSApp stopModal];
+				
+				if (returnCode == NSAlertFirstButtonReturn) {
+					NSURL* URL=[NSURL fileURLWithPath:installPath];
+					NSArray *URLs=[NSArray arrayWithObject:URL];
+					dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),^{
+						[[NSWorkspace sharedWorkspace]recycleURLs:URLs
+												completionHandler:^(NSDictionary *newURLs, NSError *error){
+													[self installPlugin:path toPath:installPath];
+													dispatch_semaphore_signal(semaphore);
+												}];
+					});
+
+				} else {
+					dispatch_semaphore_signal(semaphore);
+				}
+			}];
+			
             waitCount++;
         }else {
             installPath=[self.pluginsDirectory stringByAppendingPathComponent:[path lastPathComponent]];
             [self installPlugin:path toPath:installPath];
         }
     }
+	
     dispatch_async(dispatch_get_current_queue(), ^{
         for (NSInteger i=0; i<waitCount; i++) {
             dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
         }
-        dispatch_release(semaphore);
         [self scanPlugins];
     });
-}
-
-- (void)installAlertDidEnd:(NSAlert *)alert returnCode:(NSInteger)returnCode contextInfo:(void *)contextInfo
-{
-    [NSApp stopModal];
-    if (returnCode==1) {
-        NSDictionary* pathInfo=(NSDictionary*)objc_getAssociatedObject(alert, &ESPluginListManagerAlertAssociatedObjectKey);
-        NSString* path=[pathInfo objectForKey:@"from"];
-        NSString* installPath=[pathInfo objectForKey:@"to"];
-        
-        NSURL* URL=[NSURL fileURLWithPath:installPath];
-        NSArray *URLs=[NSArray arrayWithObject:URL];
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),^{
-            [[NSWorkspace sharedWorkspace]recycleURLs:URLs
-                                    completionHandler:^(NSDictionary *newURLs, NSError *error){
-                                        [self installPlugin:path toPath:installPath];
-                                        dispatch_semaphore_signal(contextInfo);
-                                    }];
-        });
-    } else {
-        dispatch_semaphore_signal(contextInfo);
-    }
 }
 
 - (void)installPlugin:(NSString*)path toPath:(NSString*)installPath
