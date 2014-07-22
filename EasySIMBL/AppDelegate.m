@@ -90,7 +90,11 @@
 
 - (void)application:(NSApplication *)sender openFiles:(NSArray *)filenames
 {
-    [self.pluginListManager installPlugins:filenames];
+	NSMutableArray *URLs = [NSMutableArray array];
+	for (NSString *filename in filenames) {
+		[URLs addObject:[NSURL fileURLWithPath:filename]];
+	}
+	[self.pluginListManager installPluginsFromURLs:URLs];
     [sender replyToOpenOrPrint:NSApplicationDelegateReplySuccess];
 }
 

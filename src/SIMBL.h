@@ -65,5 +65,6 @@
 + (BOOL) shouldInstallPluginsIntoApplication:(NSRunningApplication*)runningApp;
 
 + (NSString*)applicationSupportPath;
++ (NSURL *)applicationSupportURL;
 
 @end

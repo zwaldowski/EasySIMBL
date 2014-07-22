@@ -167,15 +167,27 @@ static NSMutableDictionary* loadedBundleIdentifiers = nil;
 
 + (NSString*)applicationSupportPath;
 {
-    static NSString *applicationSupportPath = nil;
-    if (!applicationSupportPath) {
-        
-        // NSApplicationSupportDirectory does not return Container, so use NSLibraryDirectory.
-        
-        NSArray* paths = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory,  NSUserDomainMask, YES);
-        applicationSupportPath = [[paths objectAtIndex:0] stringByAppendingPathComponent:EasySIMBLApplicationSupportPathComponent];
-    }
-    return applicationSupportPath;
+	static NSString *applicationSupportPath = nil;
+	if (!applicationSupportPath) {
+		
+		// NSApplicationSupportDirectory does not return Container, so use NSLibraryDirectory.
+		
+		NSArray* paths = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory,  NSUserDomainMask, YES);
+		applicationSupportPath = [[paths objectAtIndex:0] stringByAppendingPathComponent:EasySIMBLApplicationSupportPathComponent];
+	}
+	return applicationSupportPath;
+}
+
+
++ (NSURL *)applicationSupportURL
+{
+	static dispatch_once_t onceToken;
+	static NSURL *applicationSupport = nil;
+	dispatch_once(&onceToken, ^{
+		NSURL *library = [[NSFileManager new] URLForDirectory:NSLibraryDirectory inDomain:NSUserDomainMask appropriateForURL:nil create:YES error:NULL];
+		applicationSupport = [library URLByAppendingPathComponent:EasySIMBLApplicationSupportPathComponent isDirectory:YES];
+	});
+	return applicationSupport;
 }
 
 /**

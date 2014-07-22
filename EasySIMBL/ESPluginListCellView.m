@@ -9,17 +9,6 @@
 
 @implementation ESPluginListCellView
 
-- (id)initWithFrame:(NSRect)frame
-{
-    self = [super initWithFrame:frame];
-    if (self) {
-        // Initialization code here.
-    }
-    
-    return self;
-}
-
-
 #pragma mark - <NSPopoverDelegate>
 
 - (void)popoverWillShow:(NSNotification *)notification
@@ -29,7 +18,7 @@
 
 - (void)popoverWillClose:(NSNotification *)notification
 {
-    [[notification object]setDelegate:nil];
+    [[notification object] setDelegate:nil];
 }
 
 @end

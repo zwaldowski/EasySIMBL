@@ -6,33 +6,55 @@
 
 #import <objc/message.h>
 #import "SIMBL.h"
+#import "SIMBLPlugin.h"
 #import "ESPluginListManager.h"
 #import "ESPluginListCellView.h"
+#import "NSURL+ESUtilities.h"
+#import "ESDirectoryWatcher.h"
+
+@interface ESPluginListManager () <NSMenuDelegate, ESDirectoryWatcherDelegate> {
+	FSEventStreamRef _eventStream;
+}
+
+@property (nonatomic, copy, readwrite) NSArray *plugins;
+
+@property (nonatomic) NSURL *pluginsDirectoryURL;
+@property (nonatomic) NSURL *disabledPluginsDirectoryURL;
+@property (nonatomic) NSFileManager *fileManager;
+
+@property (nonatomic) ESDirectoryWatcher *watcher;
+
+@end
 
 @implementation ESPluginListManager
-@synthesize plugins = _plugins;
-@synthesize removePopover = _removePopover;
-@synthesize listView = _listView;
-@synthesize removePopoverCaption = _removePopoverCaption;
-@synthesize pluginsDirectory = _pluginsDirectory;
-@synthesize disabledPluginsDirectory = _disabledPluginsDirectory;
 
-- (id)init
+- (void)directoryWatcher:(ESDirectoryWatcher *)dirWatcher didFinishAddingItemAtURL:(NSURL *)fileURL replacement:(BOOL)isReplacement
+{
+	NSLog(@"Added! (Replacement: %@): %@", isReplacement ? @"YES" : @"NO", fileURL);
+}
+
+- (void)directoryWatcher:(ESDirectoryWatcher *)dirWatcher didRemoveItemAtURL:(NSURL *)fileURL
+{
+	NSLog(@"Removed! %@", fileURL);
+}
+
+- (instancetype)init
 {
     self = [super init];
     if (self) {
-        NSString *applicationSupportPath = [SIMBL applicationSupportPath];
-        self.pluginsDirectory = [applicationSupportPath stringByAppendingPathComponent:EasySIMBLPluginsPathComponent];
-        self.disabledPluginsDirectory = [applicationSupportPath stringByAppendingPathComponent:[EasySIMBLPluginsPathComponent stringByAppendingString:@" (Disabled)"]];
-        if (![[NSFileManager defaultManager]fileExistsAtPath:self.pluginsDirectory]) {
-            [[NSFileManager defaultManager]createDirectoryAtPath:self.pluginsDirectory withIntermediateDirectories:YES attributes:nil error:nil];
-        }
-        if (![[NSFileManager defaultManager]fileExistsAtPath:self.disabledPluginsDirectory]) {
-            [[NSFileManager defaultManager]createDirectoryAtPath:self.disabledPluginsDirectory withIntermediateDirectories:YES attributes:nil error:nil];
-        }
-        
-        [[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(setup:) name:NSApplicationWillFinishLaunchingNotification object:NSApp];
-        [[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(cleanup:) name:NSApplicationWillTerminateNotification object:NSApp];
+		_plugins = [NSMutableArray array];
+		
+		NSURL *applicationSupportURL = SIMBL.applicationSupportURL;
+		self.pluginsDirectoryURL = [applicationSupportURL URLByAppendingPathComponent:EasySIMBLPluginsPathComponent isDirectory:YES];
+		self.disabledPluginsDirectoryURL = [applicationSupportURL URLByAppendingPathComponent:[EasySIMBLPluginsPathComponent stringByAppendingString:@" (Disabled)"] isDirectory:YES];
+		
+		self.fileManager = NSFileManager.new;
+		[self.fileManager createDirectoryAtURL:self.pluginsDirectoryURL withIntermediateDirectories:YES attributes:nil error:NULL];
+		[self.fileManager createDirectoryAtURL:self.disabledPluginsDirectoryURL withIntermediateDirectories:YES attributes:nil error:NULL];
+
+		NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
+        [nc addObserver:self selector:@selector(setup:) name:NSApplicationWillFinishLaunchingNotification object:NSApp];
+        [nc addObserver:self selector:@selector(cleanup:) name:NSApplicationWillTerminateNotification object:NSApp];
         
     }
     return self;
@@ -51,80 +73,44 @@
     [self invalidateEventStream];
 }
 
-- (NSMutableArray*)scanPluginsInDirectory:(NSString*)dir{
-    
-    NSArray* files=[[NSFileManager defaultManager]contentsOfDirectoryAtPath:dir error:nil];
-    NSMutableArray* ary=[NSMutableArray arrayWithCapacity:[files count]];
-    
-    for (NSString* fileName in files) {
-        if ([fileName hasSuffix:@".bundle"]) {
-            NSString* path=[dir stringByAppendingPathComponent:fileName];
-            NSString* name=[fileName stringByDeletingPathExtension];
-            //check Info.plist
-            NSBundle* bundle = [NSBundle bundleWithPath:path];
-            NSDictionary* info=[bundle SIMBL_infoDictionary];
-            NSString* bundleIdentifier=[bundle bundleIdentifier];
-            if(![bundleIdentifier length])bundleIdentifier=@"(null)";
-            
-            NSString* bundleVersion=[bundle _dt_version];
-            if(![bundleVersion length])bundleVersion=[bundle _dt_bundleVersion];
-            
-            NSString* description=bundleIdentifier;
-            if([bundleVersion length]){
-                description=[NSString stringWithFormat:@"%@ - %@", bundleVersion, description];
-            }
-            
-            NSMutableDictionary* itm=[NSMutableDictionary dictionaryWithObjectsAndKeys:
-                                      name, @"name", path, @"path", description, @"description",
-                                      bundleIdentifier, @"bundleId", bundleVersion, @"version",
-                                      info, @"bundleInfo",
-                                      [NSNumber numberWithBool:YES], @"enabled",
-                                      [NSNumber numberWithBool:NO], @"fileSystemConflict",
-                                      nil];
-            
-            if (itm) {
-                [ary addObject:itm];
-            }
-        }
-    }
-    
-    return ary;
+- (NSArray *)scanPluginsInDirectoryAtURL:(NSURL *)directoryURL enabled:(BOOL)enabled {
+	NSMutableArray *array = [NSMutableArray array];
+	NSDirectoryEnumerator *enumerator = [self.fileManager enumeratorAtURL:directoryURL includingPropertiesForKeys:@[ NSURLTypeIdentifierKey ] options:NSDirectoryEnumerationSkipsSubdirectoryDescendants|NSDirectoryEnumerationSkipsPackageDescendants errorHandler:NULL];
+	
+	for (NSURL *URL in enumerator) {
+		SIMBLPlugin *plugin = [SIMBLPlugin pluginWithURL:URL];
+		if (!plugin) { continue; }
+		
+		plugin.enabled = enabled;
+		
+		[array addObject:plugin];
+	}
+	
+	return array;
 }
 
-- (void)scanPlugins{
-    
-    //scan plugins
-    NSString* pluginPath=self.pluginsDirectory;
-    NSMutableArray* plugins=[self scanPluginsInDirectory:pluginPath];
-    for (NSMutableDictionary* itm in plugins) {
-        [itm setObject:[NSNumber numberWithBool:YES] forKey:@"enabled"];
-    }
-    
-    //scan disabled plugins
-    pluginPath=self.disabledPluginsDirectory;
-    NSMutableArray* disabledPlugins=[self scanPluginsInDirectory:pluginPath];
-    for (NSMutableDictionary* itm in disabledPlugins) {
-        [itm setObject:[NSNumber numberWithBool:NO] forKey:@"enabled"];
-    }
-    
-    //merge and sort
-    if ([disabledPlugins count]>0) {
-        [plugins addObjectsFromArray:disabledPlugins];
-        [plugins sortWithOptions:0 usingComparator: ^(id obj1, id obj2) {
-            NSString* name1=[obj1 objectForKey:@"name"];
-            NSString* name2=[obj2 objectForKey:@"name"];
-            NSComparisonResult result=[name1 compare:name2];
-            if (result==NSOrderedSame) { //exists both folder
-                //fileSystemConflict flag disables checkbox
-                [obj1 setObject:[NSNumber numberWithBool:YES] forKey:@"fileSystemConflict"];
-                [obj2 setObject:[NSNumber numberWithBool:YES] forKey:@"fileSystemConflict"];
-            }
-            return result;
-        }];
-    }
-    
-    self.plugins=plugins;
-    
+- (void)scanPlugins {
+	NSArray *enabledPlugins = [self scanPluginsInDirectoryAtURL:self.pluginsDirectoryURL enabled:YES];
+	NSArray *disabledPlugins = [self scanPluginsInDirectoryAtURL:self.disabledPluginsDirectoryURL enabled:NO];
+	
+	if (disabledPlugins.count) {
+		NSMutableArray *plugins = [NSMutableArray arrayWithArray:enabledPlugins];
+		[plugins addObjectsFromArray:disabledPlugins];
+		[plugins sortUsingComparator:^NSComparisonResult(SIMBLPlugin *obj1, SIMBLPlugin *obj2) {
+			NSComparisonResult result = [obj1.name compare:obj2.name];
+			
+			if (result == NSOrderedSame) {
+				obj1.fileSystemConflict = YES;
+				obj2.fileSystemConflict = YES;
+			}
+			
+			return result;
+		}];
+		
+		self.plugins = plugins;
+	} else {
+		self.plugins = enabledPlugins;
+	}
 }
 
 #pragma mark - action
@@ -132,16 +118,17 @@
 // from checkbox on tableview
 - (IBAction)actToggleEnabled:(id)sender
 {
-    ESPluginListCellView* cellView=(ESPluginListCellView*)[sender superview];
-    NSMutableDictionary* target=cellView.objectValue;
+    ESPluginListCellView *cellView=(ESPluginListCellView *)[sender superview];
+	SIMBLPlugin *target = cellView.objectValue;
+	
     //enabled value is already new
-    BOOL bEnabled = [[target objectForKey:@"enabled"]boolValue];
-    if ([[NSApp currentEvent]modifierFlags] & NSCommandKeyMask) {
-        for (NSMutableDictionary *plugin in self.plugins) {
-            [self switchEnabled:bEnabled forPlugin:[plugin objectForKey:@"path"]];
-        }
+	BOOL bEnabled = target.enabled;
+    if ([[NSApp currentEvent] modifierFlags] & NSCommandKeyMask) {
+		for (SIMBLPlugin *plugin in self.plugins) {
+			[self switchEnabled:bEnabled forPlugin:plugin];
+		}
     } else {
-        [self switchEnabled:bEnabled forPlugin:[target objectForKey:@"path"]];
+		[self switchEnabled:bEnabled forPlugin:target];
     }
     
     [self scanPlugins];
@@ -157,9 +144,8 @@
     }
     
     ESPluginListCellView* cellView=(ESPluginListCellView*)[sender representedObject];
-    NSMutableDictionary* target=cellView.objectValue;
-    NSString* captionTemplate=@"Are you sure you want to uninstall \"%@\" ?";
-    NSString* caption=[NSString stringWithFormat:captionTemplate, [target objectForKey:@"name"]];
+	SIMBLPlugin *target = cellView.objectValue;
+	NSString *caption = [NSString localizedStringWithFormat:@"Are you sure you want to uninstall \"%@\" ?", target.name];
     
     [self.removePopoverCaption setStringValue:caption];
     
@@ -173,40 +159,34 @@
 - (IBAction)actDecideUninstall:(id)sender
 {
     ESPluginListCellView* cellView=(ESPluginListCellView*)self.removePopover.delegate;
-    NSMutableDictionary* target=cellView.objectValue;
+    SIMBLPlugin *target = cellView.objectValue;
     [self.removePopover performClose:self];
-    if (target) {
-        //remove
-        NSString* path=[target objectForKey:@"path"];
-        [self uninstallPlugin:path];
-    }
+	[self uninstallPlugin:target];
 }
 
 - (IBAction)actShowPluginFolder:(id)sender
 {
-    NSString* dir=self.pluginsDirectory;
-    [[NSWorkspace sharedWorkspace]selectFile:dir inFileViewerRootedAtPath:nil];
+	[NSWorkspace.sharedWorkspace activateFileViewerSelectingURLs:@[ self.pluginsDirectoryURL ]];
 }
 
--(NSMenu*)menuForTableView:(NSTableView*)tableView row:(NSInteger)row
+- (NSMenu *)menuForTableView:(NSTableView *)tableView row:(NSInteger)row
 {
-    if ([self.plugins count]<=row) {
-        return nil;
-    }
-    NSDictionary* pluginInfo=[self.plugins objectAtIndex:row];
-    
-    NSMenu* menu=[[NSMenu alloc]initWithTitle:@"menu"];
-    NSView* cellView=[tableView viewAtColumn:0 row:row makeIfNecessary:NO];
-    NSMenuItem* item;
-    NSString* uninstallLabel = [NSString stringWithFormat:@"Uninstall \"%@\" ...", [pluginInfo objectForKey:@"name"]];
-    item = [menu addItemWithTitle:uninstallLabel action:@selector(actConfirmUninstall:) keyEquivalent:@""];
+	if (self.plugins.count <= row) {
+		return nil;
+	}
+	
+	SIMBLPlugin *plugin = self.plugins[row];
+	
+    NSMenu *menu=[[NSMenu alloc]initWithTitle:@"menu"];
+    NSView *cellView=[tableView viewAtColumn:0 row:row makeIfNecessary:NO];
+    NSMenuItem *item = [menu addItemWithTitle:[NSString localizedStringWithFormat:@"Uninstall \"%@\" ...", plugin.name] action:@selector(actConfirmUninstall:) keyEquivalent:@""];
     [item setRepresentedObject:cellView];
     [item setTarget:self];
-    
-    
-    [menu addItem:[NSMenuItem separatorItem]];
+	
+    [menu addItem:NSMenuItem.separatorItem];
+	
     [menu addItemWithTitle:@"SIMBLTargetApplications:" action:nil keyEquivalent:@""];
-    NSDictionary* bundleInfo = [pluginInfo objectForKey:@"bundleInfo"];
+	NSDictionary *bundleInfo = plugin.bundleInfo;
     NSArray* targetApps = [bundleInfo objectForKey:SIMBLTargetApplications];
     for (NSDictionary* targetApp in targetApps) {
         NSNumber* number;
@@ -238,108 +218,143 @@
 
 #pragma mark - file manage
 
-- (void)switchEnabled:(BOOL)enabled forPlugin:(NSString*)path
+- (void)switchEnabled:(BOOL)enabled forPlugin:(SIMBLPlugin *)plugin
 {
-    NSString* destination;
-    if (enabled) {
-        destination=self.pluginsDirectory;
-    }else {
-        destination=self.disabledPluginsDirectory;
-    }
-    destination=[destination stringByAppendingPathComponent:[path lastPathComponent]];
-    [[NSFileManager defaultManager]moveItemAtPath:path toPath:destination error:nil];
+	NSURL *destination = [self installationURLForBundleAtURL:plugin.URL enabled:enabled];
+	[self.fileManager moveItemAtURL:plugin.URL toURL:destination error:NULL];
 }
-
-
 
 // install. copy to plugin dir
-- (void)installPlugins:(NSArray *)plugins
+- (void)installPluginsFromURLs:(NSArray *)plugins
 {
-	dispatch_group_t group = dispatch_group_create();
+	NSMutableSet *URLsToTrash = [NSMutableSet set];
+	NSMutableDictionary *URLsToInstall = [NSMutableDictionary dictionary];
 	
-    for (NSString *path in plugins) {
-        //check from plugin folder
-        if ([path hasPrefix:self.pluginsDirectory]) {
-            continue;
-        }
-        
-        //check already installed
-        NSString* installPath=[self installedPathForFileName:[path lastPathComponent]];
-        if (installPath) {
-            // already installed
-			NSAlert *alert = [[NSAlert alloc] init];
+	for (NSURL *URL in plugins) {
+		//check from plugin folder
+		if ([URL es_isChildOfURL:self.pluginsDirectoryURL]) {
+			continue;
+		}
+		
+		//check already installed
+		NSURL *installURL = nil;
+		NSURL *installedURL = [self installedURLForBundleAtURL:URL installationURL:&installURL];
+		
+		if (!installedURL) {
+			[self installPluginAtURL:URL toURL:installURL];
+			continue;
+		}
+		
+		// already installed
+		NSAlert *alert = [[NSAlert alloc] init];
+		alert.messageText = [NSString localizedStringWithFormat:@"\"%@\" is already exists. Do you want to replace it?", URL.lastPathComponent.stringByDeletingPathExtension];
+		alert.informativeText = NSLocalizedString(@"If replaced, the existing plugin is moved to the Trash.", nil);
+		[alert addButtonWithTitle:NSLocalizedString(@"Replace", nil)];
+		[alert addButtonWithTitle:NSLocalizedString(@"Cancel", nil)];
+		
+		[alert beginSheetModalForWindow:self.listView.window completionHandler:^(NSModalResponse returnCode) {
+			if (returnCode != NSAlertFirstButtonReturn) { return; }
 			
-			alert.messageText = [NSString localizedStringWithFormat:@"\"%@\" is already exists. Do you want to replace it?", path.lastPathComponent];
-			alert.informativeText = NSLocalizedString(@"If replaced, the existing file is moved to trash.", nil);
-			[alert addButtonWithTitle:NSLocalizedString(@"Replace", nil)];
-			[alert addButtonWithTitle:NSLocalizedString(@"Cancel", nil)];
-			
-			[alert beginSheetModalForWindow:self.listView.window completionHandler:^(NSModalResponse returnCode) {
-				[NSApp stopModal];
-				
-				if (returnCode == NSAlertFirstButtonReturn) {
-					NSURL* URL=[NSURL fileURLWithPath:installPath];
-					NSArray *URLs=[NSArray arrayWithObject:URL];
-					dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),^{
-						[[NSWorkspace sharedWorkspace]recycleURLs:URLs
-												completionHandler:^(NSDictionary *newURLs, NSError *error){
-													[self installPlugin:path toPath:installPath];
-													dispatch_group_leave(group);
-												}];
-					});
-
-				} else {
-					dispatch_group_leave(group);
-				}
-			}];
-			
-			dispatch_group_enter(group);
-        }else {
-            installPath=[self.pluginsDirectory stringByAppendingPathComponent:[path lastPathComponent]];
-            [self installPlugin:path toPath:installPath];
-        }
-    }
+			[URLsToTrash addObject:installedURL];
+			URLsToInstall[URL] = installURL;
+		}];
+	}
 	
-	dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+	[NSWorkspace.sharedWorkspace recycleURLs:URLsToTrash.allObjects completionHandler:^(NSDictionary *newURLs, NSError *error) {
+		[URLsToInstall enumerateKeysAndObjectsUsingBlock:^(NSURL *URL, NSURL *installURL, BOOL *stop) {
+			[self installPluginAtURL:URL toURL:installURL];
+		}];
+		
 		[self scanPlugins];
-	});
+	}];
 }
 
-- (void)installPlugin:(NSString*)path toPath:(NSString*)installPath
+- (void)installPluginAtURL:(NSURL *)URL toURL:(NSURL *)installURL
 {
-    NSError *err;
-    if (![[NSFileManager defaultManager]copyItemAtPath:path toPath:installPath error:&err]){
-        SIMBLLogNotice(@"install error:%@", err);
-    }
+	NSError *err;
+	if (![self.fileManager copyItemAtURL:URL toURL:installURL error:&err]){
+		SIMBLLogNotice(@"install error:%@", err);
+	}
 }
 
-- (NSString*)installedPathForFileName:(NSString*)filename
+- (NSURL *)installationURLForBundleAtURL:(NSURL *)URL enabled:(BOOL)enabled
 {
-    NSString* pluginPath=[self.pluginsDirectory stringByAppendingPathComponent:filename];
-    if ([[NSFileManager defaultManager]fileExistsAtPath:pluginPath]) {
-        return pluginPath;
-    }
-    pluginPath=[self.disabledPluginsDirectory stringByAppendingPathComponent:filename];
-    if ([[NSFileManager defaultManager]fileExistsAtPath:pluginPath]) {
-        return pluginPath;
-    }
-    return nil;
+	NSURL *destination = enabled ? self.pluginsDirectoryURL : self.disabledPluginsDirectoryURL;
+	return [destination URLByAppendingPathComponent:URL.lastPathComponent isDirectory:YES];
+}
+
+- (NSURL *)installedURLForBundleAtURL:(NSURL *)URL installationURL:(out NSURL **)outInstallationURL
+{
+	NSURL *pluginURL = [self installationURLForBundleAtURL:URL enabled:YES];
+	if ([pluginURL checkResourceIsReachableAndReturnError:NULL]) {
+		if (outInstallationURL) *outInstallationURL = nil;
+		return pluginURL;
+	}
+	
+	if (outInstallationURL) *outInstallationURL = pluginURL;
+
+	pluginURL = [self installationURLForBundleAtURL:URL enabled:NO];
+	if ([pluginURL checkResourceIsReachableAndReturnError:NULL]) {
+		return pluginURL;
+	}
+	
+	return nil;
 }
 
 // uninstall. move to trash
-- (void)uninstallPlugin:(NSString*)path
+- (void)uninstallPlugin:(SIMBLPlugin *)plugin
 {
-    if (!path) {
-        return;
-    }
-    NSURL* URL=[NSURL fileURLWithPath:path];
-    NSArray *URLs=[NSArray arrayWithObject:URL];
-    [[NSWorkspace sharedWorkspace]recycleURLs:URLs completionHandler:^(NSDictionary *newURLs, NSError *error){
-        [self scanPlugins];
-    }];
+	if (!plugin) { return; }
+	[NSWorkspace.sharedWorkspace recycleURLs:@[ plugin.URL ] completionHandler:^(NSDictionary *newURLs, NSError *error){
+		[self scanPlugins];
+	}];
 }
 
+- (void)menuNeedsUpdate:(NSMenu *)menu
+{
+	[menu removeAllItems];
+	
+	NSInteger row = self.listView.clickedRow;
+	if (row < 0 || row >= self.plugins.count) { return; }
 
+	SIMBLPlugin *plugin = self.plugins[row];
+	
+	NSView *cellView=[self.listView viewAtColumn:0 row:row makeIfNecessary:NO];
+	NSMenuItem *item = [menu addItemWithTitle:[NSString localizedStringWithFormat:@"Uninstall \"%@\"…", plugin.name] action:@selector(actConfirmUninstall:) keyEquivalent:@""];
+	[item setRepresentedObject:cellView];
+	[item setTarget:self];
+	
+	[menu addItem:NSMenuItem.separatorItem];
+	
+	[menu addItemWithTitle:NSLocalizedString(@"SIMBL Target Applications", nil) action:nil keyEquivalent:@""];
+	NSDictionary *bundleInfo = plugin.bundleInfo;
+	NSArray* targetApps = [bundleInfo objectForKey:SIMBLTargetApplications];
+	for (NSDictionary* targetApp in targetApps) {
+		NSNumber* number;
+		NSString* appID = [targetApp objectForKey:SIMBLBundleIdentifier];
+		NSInteger minVer = 0;
+		NSInteger maxVer = 0;
+		number=[targetApp objectForKey:SIMBLMinBundleVersion];
+		if (number) {
+			minVer=[number integerValue];
+		}
+		number = [targetApp objectForKey:SIMBLMaxBundleVersion];
+		if (number) {
+			maxVer=[number integerValue];
+		}
+		
+		item = [menu addItemWithTitle:appID action:nil keyEquivalent:@""];
+		[item setIndentationLevel:1];
+		if (minVer || maxVer) {
+			NSString* minVerStr = minVer ? [NSString stringWithFormat:@"%li", minVer] : @"";
+			NSString* maxVerStr = maxVer ? [NSString stringWithFormat:@"%li", maxVer] : @"";
+			NSString* verStr=[NSString stringWithFormat:@"version:%@ - %@", minVerStr, maxVerStr];
+			item = [menu addItemWithTitle:verStr action:nil keyEquivalent:@""];
+			[item setIndentationLevel:2];
+		}
+	}
+
+}
 
 #pragma mark FSEvents
 
@@ -364,15 +379,27 @@ static void ESFSEventsCallback(
         FSEventStreamRelease(_eventStream);
         _eventStream = nil;
     }
+	
+	if (self.watcher) {
+		[self.watcher stop];
+		self.watcher = nil;
+	}
 }
 
 - (void)setupEventStream
 {
     [self invalidateEventStream];
+	
+	NSURL *testURL = SIMBL.applicationSupportURL;
+	testURL = [testURL URLByAppendingPathComponent:@"Test" isDirectory:YES];
+	
+	self.watcher = [[ESDirectoryWatcher alloc] initWithDirectoryURL:testURL];
+	self.watcher.delegate = self;
+	[self.watcher start];
+	
+    NSArray* watchPaths= @[ self.pluginsDirectoryURL.path, self.disabledPluginsDirectoryURL.path ];
     
-    NSArray* watchPaths=[NSArray arrayWithObjects:self.pluginsDirectory, self.disabledPluginsDirectory, nil];
-    
-    FSEventStreamCreateFlags   flags = (/*kFSEventStreamCreateFlagUseCFTypes|*/ kFSEventStreamCreateFlagIgnoreSelf);
+    FSEventStreamCreateFlags   flags = (kFSEventStreamCreateFlagIgnoreSelf);
     
 	FSEventStreamContext callbackCtx;
 	callbackCtx.version = 0;
@@ -392,6 +419,85 @@ static void ESFSEventsCallback(
     if (!FSEventStreamStart(_eventStream)) {
         
     }
+}
+
+#pragma mark -
+
+
+- (void)awakeFromNib
+{
+	[super awakeFromNib];
+	
+	[self.listView registerForDraggedTypes:@[ (__bridge id)kUTTypeFileURL ]];
+}
+
+static BOOL(^URLIsBundleTest)(id, NSUInteger, BOOL *) = ^BOOL(NSURL *URL, NSUInteger idx, BOOL *_) {
+	NSString *UTI = nil;
+	if (![URL getResourceValue:&UTI forKey:NSURLTypeIdentifierKey error:NULL]) {
+		return NO;
+	}
+	
+	return UTTypeConformsTo((__bridge CFStringRef)UTI, kUTTypeBundle);
+};
+
+- (void)tableView:(NSTableView *)tableView updateDraggingItemsForDrag:(id <NSDraggingInfo>)draggingInfo
+{
+	draggingInfo.draggingFormation = NSDraggingFormationList;
+	if ([draggingInfo.draggingSource isEqual:tableView]) { return; }
+	
+	NSTableColumn *tableColumn = tableView.tableColumns[0];
+	NSTableCellView *tableCellView = [tableView makeViewWithIdentifier:@"PluginListCellView" owner:self];
+	
+	CGSize spacing = tableView.intercellSpacing;
+	
+	__block NSRect cellFrame = CGRectMake(0, 0, tableColumn.width - spacing.width, tableView.rowHeight);
+	__block NSInteger validCount = 0;
+	[draggingInfo enumerateDraggingItemsWithOptions:0 forView:tableView classes:@[ NSPasteboardItem.class ] searchOptions:@{ NSPasteboardURLReadingFileURLsOnlyKey: @YES } usingBlock:^(NSDraggingItem *draggingItem, NSInteger idx, BOOL *stop) {
+		NSPasteboardItem *item = draggingItem.item;
+		NSString *URLtype = [item availableTypeFromArray:@[ (__bridge id)kUTTypeFileURL ]];
+		NSURL *URL = URLtype ? [NSURL URLWithString:[item stringForType:URLtype]] : nil;
+		SIMBLPlugin *plugin = [SIMBLPlugin pluginWithURL:URL];
+		
+		if (!plugin) {
+			draggingItem.imageComponentsProvider = NULL;
+			return;
+		}
+		
+		draggingItem.draggingFrame = cellFrame;
+		draggingItem.imageComponentsProvider = ^{
+			tableCellView.objectValue = plugin;
+			tableCellView.frame = cellFrame;
+			return tableCellView.draggingImageComponents;
+		};
+		
+		cellFrame.origin.y += NSHeight(cellFrame) + spacing.height;
+		validCount++;
+	}];
+	
+	draggingInfo.numberOfValidItemsForDrop = validCount;
+}
+
+- (NSDragOperation)tableView:(NSTableView *)tableView validateDrop:(id <NSDraggingInfo>)info proposedRow:(NSInteger)row proposedDropOperation:(NSTableViewDropOperation)dropOperation
+{
+	if ([info draggingSource] == tableView)
+		return NSDragOperationNone;
+	
+	[tableView setDropRow:-1 dropOperation:NSTableViewDropOn];
+	return NSDragOperationCopy;
+}
+
+- (BOOL)tableView:(NSTableView *)tableView acceptDrop:(id <NSDraggingInfo>)info row:(NSInteger)row dropOperation:(NSTableViewDropOperation)dropOperation
+{
+	NSArray *URLs = [info.draggingPasteboard readObjectsForClasses:@[ NSURL.class ] options:@{ NSPasteboardURLReadingFileURLsOnlyKey: @YES }];
+	NSIndexSet *items = [URLs indexesOfObjectsWithOptions:NSEnumerationConcurrent passingTest:URLIsBundleTest];
+	NSArray *bundleURLs = [URLs objectsAtIndexes:items];
+	
+	if (!bundleURLs.count) return NO;
+	
+	dispatch_async(dispatch_get_main_queue(), ^{
+		[self installPluginsFromURLs:bundleURLs];
+	});
+	return YES;
 }
 
 @end

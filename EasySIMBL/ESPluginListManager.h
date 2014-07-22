@@ -8,19 +8,14 @@
 
 // this class is tableview delegate so that receive action from inside of table cell view etc.
 
-@interface ESPluginListManager : NSObject{
-    FSEventStreamRef _eventStream;
-}
+@interface ESPluginListManager : NSObject <NSTableViewDelegate, NSTableViewDataSource, NSMenuDelegate>
 
-@property (nonatomic) NSMutableArray* plugins;
-@property (assign) IBOutlet NSPopover *removePopover;
-@property (assign) IBOutlet NSTextField *removePopoverCaption;
-@property (assign) IBOutlet NSTableView *listView;
-@property (nonatomic) NSString *pluginsDirectory;
-@property (nonatomic) NSString *disabledPluginsDirectory;
+@property (nonatomic, copy, readonly) NSArray *plugins;
 
+@property (nonatomic, weak) IBOutlet NSPopover *removePopover;
+@property (nonatomic, weak) IBOutlet NSTextField *removePopoverCaption;
+@property (nonatomic, weak) IBOutlet NSTableView *listView;
 
-- (void)installPlugins:(NSArray*)plugins;
-- (NSMenu*)menuForTableView:(NSTableView*)tableView row:(NSInteger)row;
+- (void)installPluginsFromURLs:(NSArray *)plugins;
 
 @end

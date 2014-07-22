@@ -18,8 +18,10 @@
 		6C5644B8159E7D3900215467 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6C5644B7159E7D3900215467 /* ServiceManagement.framework */; };
 		6CCA2AF115AAC6200085ABB4 /* SIMBL.m in Sources */ = {isa = PBXBuildFile; fileRef = 6CCA2AEF15AAB8670085ABB4 /* SIMBL.m */; };
 		AA7EB1DB15A45EC100D76CFC /* ESPluginListManager.m in Sources */ = {isa = PBXBuildFile; fileRef = AA7EB1DA15A45EC100D76CFC /* ESPluginListManager.m */; };
-		AA7EB1E115A4617700D76CFC /* ESPluginListTableView.m in Sources */ = {isa = PBXBuildFile; fileRef = AA7EB1E015A4617700D76CFC /* ESPluginListTableView.m */; };
 		AA7EB1E415A4625500D76CFC /* ESPluginListCellView.m in Sources */ = {isa = PBXBuildFile; fileRef = AA7EB1E315A4625500D76CFC /* ESPluginListCellView.m */; };
+		DBD94D8C1971BCCD0066F6C3 /* NSURL+ESUtilities.m in Sources */ = {isa = PBXBuildFile; fileRef = DBD94D8B1971BCCD0066F6C3 /* NSURL+ESUtilities.m */; };
+		DBD94D8F1971C43D0066F6C3 /* SIMBLPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = DBD94D8E1971C43D0066F6C3 /* SIMBLPlugin.m */; };
+		DBD94DC11971CEE00066F6C3 /* ESDirectoryWatcher.m in Sources */ = {isa = PBXBuildFile; fileRef = DBD94DC01971CEE00066F6C3 /* ESDirectoryWatcher.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -81,10 +83,14 @@
 		6CCA2AEF15AAB8670085ABB4 /* SIMBL.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; lineEnding = 0; name = SIMBL.m; path = ../src/SIMBL.m; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objc; };
 		AA7EB1D915A45EC100D76CFC /* ESPluginListManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ESPluginListManager.h; sourceTree = "<group>"; };
 		AA7EB1DA15A45EC100D76CFC /* ESPluginListManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; lineEnding = 0; path = ESPluginListManager.m; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objc; };
-		AA7EB1DF15A4617700D76CFC /* ESPluginListTableView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ESPluginListTableView.h; sourceTree = "<group>"; };
-		AA7EB1E015A4617700D76CFC /* ESPluginListTableView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ESPluginListTableView.m; sourceTree = "<group>"; };
 		AA7EB1E215A4625500D76CFC /* ESPluginListCellView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ESPluginListCellView.h; sourceTree = "<group>"; };
 		AA7EB1E315A4625500D76CFC /* ESPluginListCellView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ESPluginListCellView.m; sourceTree = "<group>"; };
+		DBD94D8A1971BCCD0066F6C3 /* NSURL+ESUtilities.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSURL+ESUtilities.h"; sourceTree = "<group>"; };
+		DBD94D8B1971BCCD0066F6C3 /* NSURL+ESUtilities.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSURL+ESUtilities.m"; sourceTree = "<group>"; };
+		DBD94D8D1971C43D0066F6C3 /* SIMBLPlugin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SIMBLPlugin.h; sourceTree = "<group>"; };
+		DBD94D8E1971C43D0066F6C3 /* SIMBLPlugin.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SIMBLPlugin.m; sourceTree = "<group>"; };
+		DBD94DBF1971CEE00066F6C3 /* ESDirectoryWatcher.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ESDirectoryWatcher.h; sourceTree = "<group>"; };
+		DBD94DC01971CEE00066F6C3 /* ESDirectoryWatcher.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ESDirectoryWatcher.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -151,19 +157,22 @@
 		6C56448A159E7C0800215467 /* EasySIMBL */ = {
 			isa = PBXGroup;
 			children = (
-				6C4AAA6A15AEE600009B0BBA /* icon.iconset */,
+				DBD94D8D1971C43D0066F6C3 /* SIMBLPlugin.h */,
+				DBD94D8E1971C43D0066F6C3 /* SIMBLPlugin.m */,
 				6CCA2AEE15AAB8670085ABB4 /* SIMBL.h */,
 				6CCA2AEF15AAB8670085ABB4 /* SIMBL.m */,
 				6C564496159E7C0900215467 /* AppDelegate.h */,
 				6C564497159E7C0900215467 /* AppDelegate.m */,
 				6C564499159E7C0900215467 /* MainMenu.xib */,
-				6C56448B159E7C0800215467 /* Supporting Files */,
 				AA7EB1D915A45EC100D76CFC /* ESPluginListManager.h */,
 				AA7EB1DA15A45EC100D76CFC /* ESPluginListManager.m */,
-				AA7EB1DF15A4617700D76CFC /* ESPluginListTableView.h */,
-				AA7EB1E015A4617700D76CFC /* ESPluginListTableView.m */,
 				AA7EB1E215A4625500D76CFC /* ESPluginListCellView.h */,
 				AA7EB1E315A4625500D76CFC /* ESPluginListCellView.m */,
+				DBD94D8A1971BCCD0066F6C3 /* NSURL+ESUtilities.h */,
+				DBD94D8B1971BCCD0066F6C3 /* NSURL+ESUtilities.m */,
+				DBD94DBF1971CEE00066F6C3 /* ESDirectoryWatcher.h */,
+				DBD94DC01971CEE00066F6C3 /* ESDirectoryWatcher.m */,
+				6C56448B159E7C0800215467 /* Supporting Files */,
 			);
 			path = EasySIMBL;
 			sourceTree = "<group>";
@@ -171,6 +180,7 @@
 		6C56448B159E7C0800215467 /* Supporting Files */ = {
 			isa = PBXGroup;
 			children = (
+				6C4AAA6A15AEE600009B0BBA /* icon.iconset */,
 				6C56448C159E7C0800215467 /* EasySIMBL-Info.plist */,
 				6C56448D159E7C0800215467 /* InfoPlist.strings */,
 				6C564490159E7C0800215467 /* main.m */,
@@ -269,11 +279,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DBD94D8C1971BCCD0066F6C3 /* NSURL+ESUtilities.m in Sources */,
+				DBD94DC11971CEE00066F6C3 /* ESDirectoryWatcher.m in Sources */,
 				6C564491159E7C0800215467 /* main.m in Sources */,
 				6C564498159E7C0900215467 /* AppDelegate.m in Sources */,
 				AA7EB1DB15A45EC100D76CFC /* ESPluginListManager.m in Sources */,
-				AA7EB1E115A4617700D76CFC /* ESPluginListTableView.m in Sources */,
 				AA7EB1E415A4625500D76CFC /* ESPluginListCellView.m in Sources */,
+				DBD94D8F1971C43D0066F6C3 /* SIMBLPlugin.m in Sources */,
 				6CCA2AF115AAC6200085ABB4 /* SIMBL.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
